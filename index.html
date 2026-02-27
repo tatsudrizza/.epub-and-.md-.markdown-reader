@@ -1,0 +1,2062 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Open Source File Reader</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=PT+Serif:ital,wght@0,400;0,700;1,400&family=Spectral:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Bitter:ital,wght@0,300;0,400;0,700;1,400&family=Vollkorn:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@300;400;600;700&family=Roboto:ital,wght@0,300;0,400;0,700;1,400&family=Open+Sans:ital,wght@0,300;0,400;0,700;1,400&family=Montserrat:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Raleway:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Oswald:wght@300;400;600&family=Cinzel:wght@400;600;700&family=Nunito:ital,wght@0,300;0,400;0,700;1,400&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    /* Book page colours */
+    --paper: #f5f0e8;
+    --ink: #1a1610;
+    --ink-muted: #5a4f3f;
+    --accent: #8b3a1e;
+    --page-w: 860px;
+    /* UI chrome — controlled by theme picker */
+    --ui-bg:     #0d1117;
+    --ui-bar:    #161b22;
+    --ui-border: #30363d;
+    --ui-text:   #e6edf3;
+    --ui-muted:  #8b949e;
+    --ui-hi:     #2f81f7;
+  }
+
+  body {
+    background: var(--ui-bg);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: 'Inter', sans-serif;
+    color: var(--ui-text);
+    overflow-x: auto;
+    transition: background 0.2s;
+  }
+
+  /* ── TOPBAR ── */
+  #topbar {
+    width: 100%;
+    background: var(--ui-bar);
+    border-bottom: 1px solid var(--ui-border);
+    padding: 0 20px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    flex-shrink: 0;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  #topbar h1 {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--ui-text);
+    letter-spacing: -0.01em;
+    margin-right: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #topbar h1::before { content: '📖'; font-size: 1rem; }
+  #topbar h1 span { color: var(--ui-hi); }
+
+  .tb-btn {
+    background: transparent;
+    border: 1px solid var(--ui-border);
+    color: var(--ui-muted);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+  .tb-btn:hover { border-color: var(--ui-muted); color: var(--ui-text); background: rgba(255,255,255,0.04); }
+  .tb-btn:disabled { opacity: 0.3; cursor: default; }
+  .tb-btn:disabled:hover { background: transparent; border-color: var(--ui-border); color: var(--ui-muted); }
+
+  #page-info {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.78rem;
+    color: var(--ui-muted);
+    min-width: 100px;
+    justify-content: center;
+  }
+  #page-input {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.78rem;
+    color: var(--ui-text);
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    width: 44px;
+    text-align: center;
+    padding: 4px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    -moz-appearance: textfield;
+  }
+  #page-input:focus { border-color: var(--ui-hi); box-shadow: 0 0 0 3px rgba(47,129,247,0.12); }
+  #page-input::-webkit-inner-spin-button,
+  #page-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+  #page-total { color: var(--ui-muted); }
+
+  /* ── DROP ZONE ── */
+  #drop-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    width: 100%;
+    padding: 0;
+    position: relative;
+    overflow: hidden;
+    min-height: calc(100vh - 52px);
+  }
+  #drop-zone::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 70% 50% at 50% 40%, rgba(47,129,247,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  #drop-zone::after { display: none; }
+
+  .landing-inner {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+  @keyframes landingIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  .landing-ornament {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ui-hi);
+    margin-bottom: 20px;
+    animation: landingIn 0.5s 0.05s both ease-out;
+  }
+
+  .landing-title {
+    font-family: 'Inter', sans-serif;
+    font-size: clamp(2rem, 5vw, 3.4rem);
+    font-weight: 700;
+    color: var(--ui-text);
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    text-align: center;
+    margin-bottom: 12px;
+    animation: landingIn 0.5s 0.1s both ease-out;
+  }
+  .landing-title em {
+    font-style: normal;
+    background: linear-gradient(120deg, var(--ui-hi) 0%, #79c0ff 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .landing-sub {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 400;
+    color: var(--ui-muted);
+    text-align: center;
+    margin-bottom: 40px;
+    animation: landingIn 0.5s 0.15s both ease-out;
+  }
+
+  #drop-area {
+    width: clamp(300px, 44vw, 500px);
+    border: 1px dashed var(--ui-border);
+    border-radius: 12px;
+    background: rgba(255,255,255,0.02);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: all 0.18s;
+    padding: 44px 36px;
+    animation: landingIn 0.5s 0.2s both ease-out;
+  }
+  #drop-area::before { display: none; }
+  #drop-area:hover { border-color: var(--ui-hi); background: rgba(47,129,247,0.04); }
+  #drop-area.drag-over { border-color: var(--ui-hi); background: rgba(47,129,247,0.08); transform: scale(1.01); }
+
+  .drop-icon { font-size: 2.2rem; opacity: 0.55; transition: all 0.18s; }
+  #drop-area:hover .drop-icon { opacity: 0.85; transform: scale(1.06); }
+
+  .drop-title {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--ui-text);
+    text-align: center;
+  }
+  .drop-hint {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: var(--ui-muted);
+    letter-spacing: 0;
+    text-transform: none;
+    text-align: center;
+  }
+
+  #file-input { display: none; }
+
+  .drop-divider {
+    display: flex; align-items: center; gap: 12px; width: 100%; margin: 4px 0;
+  }
+  .drop-divider::before, .drop-divider::after {
+    content: ''; flex: 1; height: 1px; background: var(--ui-border);
+  }
+  .drop-divider span {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.72rem;
+    color: var(--ui-muted);
+  }
+
+  #choose-btn {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 500;
+    padding: 8px 22px;
+    background: var(--ui-hi);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.15s;
+    box-shadow: 0 2px 12px rgba(47,129,247,0.3);
+  }
+  #choose-btn:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 18px rgba(47,129,247,0.4); }
+
+  .landing-features {
+    display: flex;
+    gap: 28px;
+    margin-top: 40px;
+    animation: landingIn 0.5s 0.3s both ease-out;
+  }
+  .feature { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+  .feature-icon { font-size: 1.1rem; opacity: 0.4; }
+  .feature-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    color: var(--ui-muted);
+    opacity: 0.7;
+  }
+
+  /* ── READER ── */
+  #reader { display: none; flex: 1; width: 100%; flex-direction: column; align-items: center; padding: 40px 20px 60px; gap: 28px; overflow-x: auto; }
+
+  /* ── PAGE (PDF-like) ── */
+  .page-wrapper {
+    position: relative;
+    width: var(--page-w);
+    filter: drop-shadow(0 8px 32px rgba(0,0,0,0.55));
+    animation: pageIn 0.35s ease both;
+  }
+  @keyframes pageIn { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform:none; } }
+
+  .page-shadow {
+    position: absolute;
+    bottom: -10px; left: 6px; right: 6px;
+    height: 20px;
+    background: rgba(0,0,0,0.3);
+    filter: blur(10px);
+    border-radius: 50%;
+  }
+
+  .page {
+    width: var(--page-w);
+    min-height: 1100px;
+    background: var(--paper);
+    background-image:
+      linear-gradient(to right, rgba(0,0,0,0.04) 0px, transparent 50px),
+      linear-gradient(to bottom, rgba(0,0,0,0.015) 0%, transparent 5%);
+    padding: 72px 80px 88px;
+    position: relative;
+  }
+
+  /* binding edge */
+  .page::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 5px;
+    background: linear-gradient(to right, rgba(0,0,0,0.12), transparent);
+  }
+
+  /* page number strip */
+  .page-number-strip {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-top: 1px solid rgba(0,0,0,0.1);
+  }
+  .page-number-strip span {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 0.85rem;
+    color: var(--ink-muted);
+    letter-spacing: 0.1em;
+  }
+
+  /* ── CONTENT STYLES ── */
+  .page-content { font-size: 0.88rem; line-height: 1.85; color: var(--ink); }
+  .page-content h1, .page-content h2, .page-content h3 {
+    font-family: 'Cormorant Garamond', serif;
+    color: var(--ink);
+    margin: 1.4em 0 0.5em;
+    line-height: 1.25;
+  }
+  .page-content h1 { font-size: 2rem; font-weight: 300; text-align: center; letter-spacing: 0.04em; margin-top: 0; }
+  .page-content h2 { font-size: 1.45rem; font-weight: 400; }
+  .page-content h3 { font-size: 1.15rem; font-weight: 600; }
+  .page-content p { margin-bottom: 1em; text-align: justify; hyphens: auto; }
+  /* drop-cap disabled — causes issues with table/structured EPUB content */
+  .page-content img { max-width: 100%; height: auto; display: block; margin: 1.5em auto; }
+  .page-content blockquote {
+    border-left: 3px solid var(--accent);
+    padding: 0.2em 0 0.2em 1.2em;
+    margin: 1.2em 0;
+    font-style: italic;
+    color: var(--ink-muted);
+  }
+  .page-content a { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(139,58,30,0.3); }
+  .page-content ul, .page-content ol { padding-left: 1.5em; margin-bottom: 1em; }
+  .page-content li { margin-bottom: 0.4em; }
+
+  /* ── EQUATIONS & MATH ── */
+  /* Never clip or scroll equation content — show it all */
+  .page-content * { overflow: visible !important; }
+  /* Give centred paragraphs (typically displayed equations) a little extra breathing room */
+  .page-content p[style*="text-align: center"],
+  .page-content p[style*="text-align:center"],
+  .page-content p[align="center"] {
+    margin-top: 1.1em !important;
+    margin-bottom: 1.1em !important;
+  }
+  /* Indented paragraphs used for displayed equations */
+  .page-content p[style*="margin-left"],
+  .page-content p[style*="padding-left"] {
+    margin-top: 1.0em !important;
+    margin-bottom: 1.0em !important;
+  }
+  /* Named equation/formula classes */
+  .page-content .equation, .page-content .formula,
+  .page-content [class*="equat"], .page-content [class*="formula"] {
+    margin: 1.2em 0 !important;
+  }
+  /* MathML block display */
+  .page-content math[display="block"] {
+    display: block;
+    margin: 1.2em auto !important;
+  }
+
+  /* ── TABLES ── */
+  .page-content table {
+    width: auto;
+    max-width: 100%;
+    border-collapse: collapse;
+    margin: 1.5em auto;
+    font-size: 0.88em;
+    line-height: 1.5;
+  }
+  /* Only apply fallback borders if the cell has no inline border style */
+  .page-content th, .page-content td {
+    padding: 7px 14px;
+    vertical-align: top;
+    text-align: left;
+  }
+  /* Fallback: if no border at all, add subtle ones */
+  .page-content table:not([border]) th,
+  .page-content table:not([border]) td {
+    border: 1px solid rgba(128,128,128,0.25);
+  }
+  /* Header rows */
+  .page-content thead tr,
+  .page-content th {
+    font-weight: 700;
+    border-bottom: 2px solid rgba(128,128,128,0.35);
+  }
+  /* Zebra striping for readability */
+  .page-content tbody tr:nth-child(even) {
+    background: rgba(128,128,128,0.06);
+  }
+  /* Numeric columns — right-align td that contain only numbers */
+  .page-content td[align="right"], .page-content th[align="right"] { text-align: right; }
+  .page-content td[align="center"], .page-content th[align="center"] { text-align: center; }
+  /* Prevent cells from being crushed */
+  .page-content td, .page-content th { min-width: 40px; white-space: normal; word-break: normal; }
+  /* Caption */
+  .page-content caption {
+    font-size: 0.85em;
+    font-style: italic;
+    color: var(--ink-muted);
+    margin-bottom: 6px;
+    caption-side: top;
+    text-align: left;
+  }
+  /* ensure table cells don't inherit distorted letter sizing */
+  .page-content td p, .page-content th p { font-size: 1em; margin: 0; }
+  .page-content td *, .page-content th * { max-width: 100%; }
+
+  /* ── TOC SIDEBAR ── */
+  #toc-toggle {
+    position: fixed;
+    left: 16px; top: 50%;
+    transform: translateY(-50%);
+    background: #1a1410;
+    border: 1px solid #3a3028;
+    color: #c5b89a;
+    font-size: 1.1rem;
+    width: 36px; height: 36px;
+    cursor: pointer;
+    border-radius: 2px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    z-index: 50;
+  }
+  #toc-toggle:hover { background: var(--accent); border-color: var(--accent); }
+
+  #toc-panel {
+    position: fixed;
+    left: -280px; top: 56px; bottom: 0;
+    width: 280px;
+    background: #1a1410;
+    border-right: 1px solid #3a3028;
+    overflow-y: auto;
+    transition: left 0.3s ease;
+    z-index: 49;
+    padding: 20px 0;
+  }
+  #toc-panel.open { left: 0; }
+  #toc-panel h3 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 0.85rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #5a4f3f;
+    padding: 0 20px 12px;
+    border-bottom: 1px solid #2a2018;
+    margin-bottom: 8px;
+  }
+  .toc-item {
+    display: block;
+    padding: 7px 20px;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 0.9rem;
+    color: #9a8a6a;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-left: 2px solid transparent;
+    line-height: 1.3;
+  }
+  .toc-item:hover { color: var(--paper); border-left-color: var(--accent); background: rgba(255,255,255,0.03); }
+  .toc-item.active { color: var(--paper); border-left-color: var(--accent); }
+  .toc-item[data-depth="1"] { padding-left: 32px; font-size: 0.82rem; }
+
+  /* ── LOADING ── */
+  #loading {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    padding: 80px;
+    color: rgba(197,184,154,0.5);
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.0rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    flex: 1;
+    min-height: calc(100vh - 56px);
+  }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 1px solid rgba(196,129,58,0.15);
+    border-top-color: var(--accent2);
+    border-radius: 50%;
+    animation: spin 1.1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── FONT SIZE CONTROL ── */
+  #font-size-control {
+    display: none;
+    align-items: center;
+    gap: 2px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    padding: 2px 4px;
+  }
+  #font-size-control span {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--ui-muted);
+    min-width: 28px;
+    text-align: center;
+  }
+  .fs-btn {
+    background: none; border: none;
+    color: var(--ui-muted);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    width: 26px; height: 26px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+    line-height: 1;
+  }
+  .fs-btn:hover { color: var(--ui-text); background: rgba(255,255,255,0.06); }
+  .fs-btn:disabled { opacity: 0.25; cursor: default; }
+
+  #layout-toggle {
+    display: flex;
+    gap: 2px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    padding: 2px;
+  }
+  .layout-btn {
+    background: none; border: none;
+    color: var(--ui-muted);
+    width: 28px; height: 26px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .layout-btn:hover { color: var(--ui-text); background: rgba(255,255,255,0.06); }
+  .layout-btn.active { background: var(--ui-hi); color: #fff; }
+
+  /* ── NAV AREA ── */
+  #nav-area { display: flex; gap: 8px; align-items: center; }
+
+  /* ── THEME PICKER ── */
+  #theme-wrap { position: relative; display: none; }
+  #theme-btn {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--ui-border);
+    color: var(--ui-muted);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 500;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-radius: 6px;
+    display: flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+  }
+  #theme-btn:hover { border-color: var(--ui-muted); color: var(--ui-text); }
+  #theme-swatch {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.15);
+    flex-shrink: 0;
+  }
+
+  #theme-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: var(--ui-bar);
+    border: 1px solid var(--ui-border);
+    border-radius: 10px;
+    padding: 16px;
+    width: 340px;
+    max-height: 82vh;
+    overflow-y: auto;
+    display: none;
+    flex-direction: column;
+    gap: 16px;
+    z-index: 200;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+    scrollbar-width: thin;
+    scrollbar-color: var(--ui-border) transparent;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  #theme-panel.open { display: flex; }
+
+  .theme-section-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ui-muted);
+    margin-bottom: 8px;
+  }
+
+  .theme-presets {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 6px;
+  }
+  .theme-preset {
+    width: 100%; aspect-ratio: 1;
+    border-radius: 4px; cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color 0.15s, transform 0.12s;
+    position: relative;
+  }
+  .theme-preset:hover { transform: scale(1.12); }
+  .theme-preset.active { border-color: var(--ui-hi); }
+  .theme-preset[title]::after {
+    content: attr(title);
+    position: absolute;
+    bottom: -20px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.58rem;
+    font-family: 'Inter', sans-serif;
+    color: var(--ui-muted);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .theme-preset:hover::after { opacity: 1; }
+
+  /* Custom color rows */
+  .color-row {
+    display: flex; align-items: center;
+    justify-content: space-between; gap: 10px;
+  }
+  .color-row label {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.76rem; color: var(--ui-muted); flex: 1;
+  }
+  .color-row input[type="color"] {
+    width: 34px; height: 26px;
+    border: 1px solid var(--ui-border);
+    border-radius: 4px; background: none; cursor: pointer; padding: 2px;
+  }
+  .color-row input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+  .color-row input[type="color"]::-webkit-color-swatch { border: none; border-radius: 2px; }
+
+  /* Font rows */
+  .font-row {
+    display: flex; align-items: center;
+    justify-content: space-between; gap: 8px; margin-top: 8px;
+  }
+  .font-row:first-of-type { margin-top: 0; }
+  .font-row label {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.76rem; color: var(--ui-muted); flex-shrink: 0; width: 72px;
+  }
+  .font-row select {
+    flex: 1;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.74rem;
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    color: var(--ui-text);
+    padding: 5px 26px 5px 8px;
+    cursor: pointer; outline: none;
+    transition: border-color 0.15s;
+    appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238b949e'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+  }
+  .font-row select:focus { border-color: var(--ui-hi); }
+  .font-row select option, .font-row select optgroup { background: var(--ui-bar); color: var(--ui-text); }
+
+  /* ── TOC SIDEBAR ── */
+  #toc-toggle {
+    position: fixed; left: 12px; top: 50%;
+    transform: translateY(-50%);
+    background: var(--ui-bar);
+    border: 1px solid var(--ui-border);
+    color: var(--ui-muted);
+    font-size: 1rem;
+    width: 32px; height: 32px;
+    cursor: pointer; border-radius: 6px;
+    display: none; align-items: center; justify-content: center;
+    transition: all 0.15s; z-index: 50;
+  }
+  #toc-toggle:hover { color: var(--ui-text); border-color: var(--ui-muted); background: rgba(255,255,255,0.06); }
+
+  #toc-panel {
+    position: fixed; left: -280px; top: 52px; bottom: 0;
+    width: 280px;
+    background: var(--ui-bar);
+    border-right: 1px solid var(--ui-border);
+    overflow-y: auto;
+    transition: left 0.25s cubic-bezier(0.22,1,0.36,1);
+    z-index: 49; padding: 16px 0;
+    scrollbar-width: thin; scrollbar-color: var(--ui-border) transparent;
+  }
+  #toc-panel.open { left: 0; }
+  #toc-panel h3 {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.66rem; font-weight: 600;
+    letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--ui-muted);
+    padding: 0 16px 10px;
+    border-bottom: 1px solid var(--ui-border); margin-bottom: 6px;
+  }
+  .toc-item {
+    display: block; padding: 6px 16px;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.8rem; color: var(--ui-muted);
+    text-decoration: none; cursor: pointer;
+    transition: all 0.12s;
+    border-left: 2px solid transparent; line-height: 1.4;
+  }
+  .toc-item:hover { color: var(--ui-text); background: rgba(255,255,255,0.04); }
+  .toc-item.active { color: var(--ui-text); border-left-color: var(--ui-hi); background: rgba(47,129,247,0.07); }
+  .toc-item[data-depth="1"] { padding-left: 28px; font-size: 0.74rem; }
+
+  /* ── LOADING ── */
+  #loading {
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 80px;
+    color: var(--ui-muted);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.8rem; font-weight: 500; letter-spacing: 0.04em;
+    flex: 1; min-height: calc(100vh - 52px);
+  }
+  .spinner {
+    width: 30px; height: 30px;
+    border: 2px solid var(--ui-border);
+    border-top-color: var(--ui-hi);
+    border-radius: 50%;
+    animation: spin 0.75s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spread-wrapper {
+    display: grid;
+    grid-template-columns: 640px 640px;
+    position: relative;
+    filter: drop-shadow(0 10px 40px rgba(0,0,0,0.65));
+    animation: pageIn 0.3s ease both;
+  }
+
+  /* spine gutter between pages */
+  .spread-wrapper::after {
+    content: '';
+    position: absolute;
+    left: 50%; top: 0; bottom: 0;
+    width: 12px;
+    transform: translateX(-50%);
+    background: linear-gradient(to right,
+      rgba(0,0,0,0.22) 0%,
+      rgba(0,0,0,0.06) 40%,
+      rgba(255,255,255,0.04) 50%,
+      rgba(0,0,0,0.06) 60%,
+      rgba(0,0,0,0.22) 100%
+    );
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* left page — binding shadow on right edge */
+  .page.left-page::after {
+    content: '';
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 32px;
+    background: linear-gradient(to right, transparent, rgba(0,0,0,0.12));
+    pointer-events: none;
+  }
+  .page.left-page::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 5px;
+    background: linear-gradient(to right, rgba(0,0,0,0.12), transparent);
+  }
+
+  /* right page — binding shadow on left edge */
+  .page.right-page::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 32px;
+    background: linear-gradient(to left, transparent, rgba(0,0,0,0.12));
+    pointer-events: none;
+  }
+
+  /* left page number aligns left, right page number aligns right */
+  .page.left-page .page-number-strip { justify-content: flex-start; padding-left: 28px; }
+  .page.right-page .page-number-strip { justify-content: flex-end; padding-right: 28px; }
+
+  /* in double mode, pages are exactly 640px — override base page width */
+  .spread-wrapper .page {
+    width: 640px !important;
+    min-height: 1100px;
+    padding: 70px 72px 84px;
+  }
+
+  /* placeholder page when chapter count is odd */
+  .page.blank-page { background: var(--paper); opacity: 0.6; }
+
+  @media print {
+    .spread-wrapper { display: block; filter: none; }
+    .spread-wrapper::after { display: none; }
+    .spread-wrapper .page { width: var(--page-w) !important; }
+  }
+  @media print {
+    body { background: white; }
+    #topbar, #toc-toggle, #toc-panel { display: none !important; }
+    #reader { padding: 0; }
+    .page-wrapper { filter: none; break-after: page; }
+    .page { min-height: auto; box-shadow: none; }
+  }
+
+  /* ── ERROR TOAST ── */
+  #error-toast {
+    position: fixed;
+    bottom: 28px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: #2d0d0d;
+    border: 1px solid #7a2020;
+    color: #ffaaaa;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 500;
+    padding: 12px 20px 12px 16px;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    z-index: 9999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    max-width: 440px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  #error-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #error-toast .toast-icon { font-size: 1rem; flex-shrink: 0; }
+
+  /* ── MARKDOWN READER ── */
+  #md-reader {
+    display: none;
+    flex: 1;
+    width: 100%;
+    overflow: hidden;
+  }
+  .md-layout {
+    display: flex;
+    flex-direction: row;
+    height: calc(100vh - 52px);
+    width: 100%;
+    overflow: hidden;
+  }
+  .md-editor-panel {
+    background: var(--ui-bar);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 120px;
+    max-width: calc(100% - 125px);
+    flex-shrink: 0;
+    transition: background 0.2s;
+    /* width controlled by JS drag */
+  }
+  /* ── DRAG RESIZER ── */
+  .md-resizer {
+    width: 5px;
+    flex-shrink: 0;
+    background: var(--ui-border);
+    cursor: col-resize;
+    position: relative;
+    transition: background 0.15s;
+    z-index: 10;
+    user-select: none;
+  }
+  .md-resizer:hover, .md-resizer.dragging {
+    background: var(--ui-hi);
+  }
+  .md-resizer::after {
+    content: '';
+    position: absolute;
+    inset: 0 -5px;
+  }
+  .md-panel-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--ui-border);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ui-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .md-panel-header .md-filename {
+    color: var(--ui-text);
+    font-weight: 500;
+    font-size: 0.8rem;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  #md-editor {
+    flex: 1;
+    width: 100%;
+    background: var(--ui-bg);
+    color: var(--ui-text);
+    border: none;
+    outline: none;
+    resize: none;
+    font-family: 'SF Mono','Fira Code','Cascadia Code',monospace;
+    font-size: 0.82rem;
+    line-height: 1.7;
+    padding: 24px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--ui-border) transparent;
+    transition: background 0.2s, color 0.2s;
+  }
+  .md-preview-panel {
+    background: var(--ui-bg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex: 1 1 0;
+    min-width: 120px;
+    width: 0; /* force flex to respect flex-basis, not content size */
+    transition: background 0.2s;
+  }
+  #md-preview {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 32px 24px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--ui-border) transparent;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  #md-preview .md-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--ui-muted);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.82rem;
+    gap: 12px;
+    opacity: 0.5;
+  }
+  /* Rendered markdown styled as a book page */
+  .md-content {
+    width: 100%;
+    max-width: 800px;
+    margin: 0 auto;
+    background: var(--paper);
+    padding: 48px clamp(24px, 5%, 64px) 64px;
+    border-radius: 2px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+    font-family: 'Libre Baskerville', serif;
+    color: var(--ink);
+    line-height: 1.85;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+  }
+  .md-content h1,.md-content h2,.md-content h3,
+  .md-content h4,.md-content h5,.md-content h6 {
+    font-family: 'Cormorant Garamond', serif;
+    color: var(--ink); line-height: 1.25; margin: 1.4em 0 0.5em;
+  }
+  .md-content h1 { font-size: 2rem; font-weight: 300; text-align: center; letter-spacing: 0.04em; margin-top: 0; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 0.5em; }
+  .md-content h2 { font-size: 1.45rem; font-weight: 400; }
+  .md-content h3 { font-size: 1.15rem; font-weight: 600; }
+  .md-content h4 { font-size: 1rem; font-weight: 700; }
+  .md-content p { margin-bottom: 1em; text-align: justify; hyphens: auto; }
+  .md-content a { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(139,58,30,0.3); }
+  .md-content a:hover { opacity: 0.75; }
+  .md-content ul,.md-content ol { padding-left: 1.5em; margin: 0.5em 0 1em; }
+  .md-content li { margin-bottom: 0.3em; line-height: 1.7; }
+  .md-content blockquote { border-left: 3px solid var(--accent); padding: 0.2em 0 0.2em 1.2em; margin: 1.2em 0; font-style: italic; color: var(--ink-muted); }
+  .md-content code { background: rgba(0,0,0,0.06); padding: 0.15em 0.4em; border-radius: 3px; font-family: 'SF Mono','Fira Code',monospace; font-size: 0.84em; }
+  .md-content pre { background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.1); border-radius: 4px; padding: 1.1em; overflow-x: auto; margin: 1.2em 0; }
+  .md-content pre code { background: none; padding: 0; font-size: 0.82em; }
+  .md-content hr { border: none; border-top: 1px solid rgba(0,0,0,0.12); margin: 2em 0; }
+  .md-content img { max-width: 100%; height: auto; border-radius: 4px; margin: 1em 0; display: block; }
+  .md-content table { width: 100%; border-collapse: collapse; margin: 1.2em 0; font-size: 0.88em; }
+  .md-content th,.md-content td { padding: 7px 12px; border: 1px solid rgba(0,0,0,0.12); text-align: left; }
+  .md-content th { background: rgba(0,0,0,0.04); font-weight: 700; }
+  .md-content tbody tr:nth-child(even) { background: rgba(0,0,0,0.03); }
+  .md-content strong { font-weight: 700; }
+
+  @media (max-width: 768px) {
+    .md-layout { flex-direction: column; }
+    .md-editor-panel { width: 100% !important; min-height: 200px; flex-shrink: 1; }
+    .md-resizer { width: 100%; height: 5px; cursor: row-resize; }
+    .md-resizer::after { inset: -5px 0; }
+    .md-preview-panel { min-width: unset; min-height: 200px; }
+    .md-content { padding: 28px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <h1>Open Source <span>File Reader</span></h1>
+  <div id="nav-area" style="display:none">
+    <button class="tb-btn" id="prev-btn" disabled>← Prev</button>
+    <div id="page-info">
+      <input type="number" id="page-input" min="1" value="1" title="Type a page number and press Enter" />
+      <span id="page-total">/ —</span>
+    </div>
+    <button class="tb-btn" id="next-btn" disabled>Next →</button>
+  </div>
+  <div id="font-size-control">
+    <button class="fs-btn" id="fs-down" title="Decrease font size">A−</button>
+    <span id="fs-label">S</span>
+    <button class="fs-btn" id="fs-up" title="Increase font size">A+</button>
+  </div>
+  <div id="layout-toggle" style="display:none">
+    <button class="layout-btn active" id="btn-single" title="Single page" onclick="setLayout('single')">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="4" y="2" width="10" height="14" rx="1" fill="currentColor" opacity="0.9"/></svg>
+    </button>
+    <button class="layout-btn" id="btn-double" title="Two-page spread" onclick="setLayout('double')">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1" y="2" width="7" height="14" rx="1" fill="currentColor" opacity="0.9"/><rect x="10" y="2" width="7" height="14" rx="1" fill="currentColor" opacity="0.9"/></svg>
+    </button>
+  </div>
+  <div id="theme-wrap">
+    <button id="theme-btn" title="Change theme">
+      <span id="theme-swatch" style="background:#f5f0e8"></span>
+      Theme
+    </button>
+    <div id="theme-panel">
+      <div>
+        <div class="theme-section-label">Presets</div>
+        <div class="theme-presets">
+          <div class="theme-preset active" style="background:#f5f0e8;border-top:6px solid #1a1610;" title="Parchment"  data-bg="#f5f0e8" data-fg="#1a1610" data-hd="#2c1810" data-lk="#1a6fa8" data-ui-bg="#0d1117" data-ui-bar="#161b22" data-ui-border="#30363d" data-ui-text="#e6edf3" data-ui-hi="#2f81f7"></div>
+          <div class="theme-preset"        style="background:#ffffff;border-top:6px solid #111111;" title="White"      data-bg="#ffffff" data-fg="#111111" data-hd="#000000" data-lk="#1a56db" data-ui-bg="#f6f8fa" data-ui-bar="#ffffff" data-ui-border="#d0d7de" data-ui-text="#1f2328" data-ui-hi="#0969da"></div>
+          <div class="theme-preset"        style="background:#fdf6e3;border-top:6px solid #333333;" title="Sepia"      data-bg="#fdf6e3" data-fg="#333333" data-hd="#5c3a00" data-lk="#2e7d9c" data-ui-bg="#1c1208" data-ui-bar="#241808" data-ui-border="#4a3010" data-ui-text="#e8d5b0" data-ui-hi="#c4813a"></div>
+          <div class="theme-preset"        style="background:#f7f3ee;border-top:6px solid #2c2416;" title="Ivory"      data-bg="#f7f3ee" data-fg="#2c2416" data-hd="#6b3d0e" data-lk="#3a7ca5" data-ui-bg="#0d1117" data-ui-bar="#161b22" data-ui-border="#30363d" data-ui-text="#e6edf3" data-ui-hi="#2f81f7"></div>
+          <div class="theme-preset"        style="background:#fffef5;border-top:6px solid #1a1a2e;" title="Paper"      data-bg="#fffef5" data-fg="#1a1a2e" data-hd="#16213e" data-lk="#0f3460" data-ui-bg="#f5f5f0" data-ui-bar="#ebebdf" data-ui-border="#ccccb8" data-ui-text="#1a1a2e" data-ui-hi="#0f3460"></div>
+          <div class="theme-preset"        style="background:#e8f0e8;border-top:6px solid #1a2a1a;" title="Mint"       data-bg="#e8f0e8" data-fg="#1a2a1a" data-hd="#0d3b1e" data-lk="#7b3fa0" data-ui-bg="#0a1a0a" data-ui-bar="#0f2010" data-ui-border="#1a4020" data-ui-text="#c8e6c8" data-ui-hi="#3fb950"></div>
+          <div class="theme-preset"        style="background:#f0eaf5;border-top:6px solid #2a1a3a;" title="Lavender"   data-bg="#f0eaf5" data-fg="#2a1a3a" data-hd="#4a0080" data-lk="#c05000" data-ui-bg="#120a1e" data-ui-bar="#1a0f2a" data-ui-border="#3a2050" data-ui-text="#e0aaff" data-ui-hi="#c77dff"></div>
+          <div class="theme-preset"        style="background:#fef0e8;border-top:6px solid #3a1500;" title="Warm"       data-bg="#fef0e8" data-fg="#3a1500" data-hd="#7a2800" data-lk="#1a6fa8" data-ui-bg="#1a0a00" data-ui-bar="#241200" data-ui-border="#502800" data-ui-text="#ffd8b0" data-ui-hi="#e07030"></div>
+          <div class="theme-preset"        style="background:#1e1e2e;border-top:6px solid #cdd6f4;" title="Night"      data-bg="#1e1e2e" data-fg="#cdd6f4" data-hd="#89b4fa" data-lk="#f38ba8" data-ui-bg="#11111e" data-ui-bar="#1a1a2e" data-ui-border="#313244" data-ui-text="#cdd6f4" data-ui-hi="#89b4fa"></div>
+          <div class="theme-preset"        style="background:#0d1117;border-top:6px solid #e6edf3;" title="Obsidian"   data-bg="#0d1117" data-fg="#e6edf3" data-hd="#58a6ff" data-lk="#3fb950" data-ui-bg="#0d1117" data-ui-bar="#161b22" data-ui-border="#30363d" data-ui-text="#e6edf3" data-ui-hi="#2f81f7"></div>
+          <div class="theme-preset"        style="background:#1a1a1a;border-top:6px solid #e0e0e0;" title="Charcoal"   data-bg="#1a1a1a" data-fg="#e0e0e0" data-hd="#ffffff" data-lk="#64d8cb" data-ui-bg="#111111" data-ui-bar="#1e1e1e" data-ui-border="#333333" data-ui-text="#e0e0e0" data-ui-hi="#64d8cb"></div>
+          <div class="theme-preset"        style="background:#1a2634;border-top:6px solid #c8d8e8;" title="Ocean"      data-bg="#1a2634" data-fg="#c8d8e8" data-hd="#7ec8e3" data-lk="#e8845a" data-ui-bg="#0a1520" data-ui-bar="#10202e" data-ui-border="#1e3a50" data-ui-text="#c8d8e8" data-ui-hi="#7ec8e3"></div>
+          <div class="theme-preset"        style="background:#0f1f0f;border-top:6px solid #90ee90;" title="Forest"     data-bg="#0f1f0f" data-fg="#c8e6c8" data-hd="#90ee90" data-lk="#ffd700" data-ui-bg="#070f07" data-ui-bar="#0c180c" data-ui-border="#1a3a1a" data-ui-text="#c8e6c8" data-ui-hi="#4caf50"></div>
+          <div class="theme-preset"        style="background:#1c1c2e;border-top:6px solid #e0aaff;" title="Violet"     data-bg="#1c1c2e" data-fg="#e0aaff" data-hd="#c77dff" data-lk="#48cae4" data-ui-bg="#100f1e" data-ui-bar="#181726" data-ui-border="#2e2a4a" data-ui-text="#e0aaff" data-ui-hi="#c77dff"></div>
+          <div class="theme-preset"        style="background:#2d1b0e;border-top:6px solid #e8d5b0;" title="Dusk"       data-bg="#2d1b0e" data-fg="#e8d5b0" data-hd="#f0c070" data-lk="#5ecec8" data-ui-bg="#1a0e05" data-ui-bar="#24140a" data-ui-border="#4a2e10" data-ui-text="#e8d5b0" data-ui-hi="#f0c070"></div>
+          <div class="theme-preset"        style="background:#1a0a0a;border-top:6px solid #ffcccc;" title="Ember"      data-bg="#1a0a0a" data-fg="#ffcccc" data-hd="#ff8080" data-lk="#ffcc44" data-ui-bg="#100505" data-ui-bar="#180808" data-ui-border="#401010" data-ui-text="#ffcccc" data-ui-hi="#ff6060"></div>
+        </div>
+      </div>
+      <div>
+        <div class="theme-section-label">Book Page</div>
+        <div class="color-row">
+          <label>Page colour</label>
+          <input type="color" id="custom-bg" value="#f5f0e8" />
+        </div>
+        <div class="color-row" style="margin-top:8px">
+          <label>Text colour</label>
+          <input type="color" id="custom-fg" value="#1a1610" />
+        </div>
+        <div class="color-row" style="margin-top:8px">
+          <label>Heading colour</label>
+          <input type="color" id="custom-hd" value="#2c1810" />
+        </div>
+        <div class="color-row" style="margin-top:8px">
+          <label>Link colour</label>
+          <input type="color" id="custom-lk" value="#1a6fa8" />
+        </div>
+      </div>
+      <div>
+        <div class="theme-section-label">App Chrome</div>
+        <div class="color-row">
+          <label>Background</label>
+          <input type="color" id="custom-ui-bg" value="#0d1117" />
+        </div>
+        <div class="color-row" style="margin-top:8px">
+          <label>Toolbar</label>
+          <input type="color" id="custom-ui-bar" value="#161b22" />
+        </div>
+        <div class="color-row" style="margin-top:8px">
+          <label>Borders</label>
+          <input type="color" id="custom-ui-border" value="#30363d" />
+        </div>
+        <div class="color-row" style="margin-top:8px">
+          <label>Text</label>
+          <input type="color" id="custom-ui-text" value="#e6edf3" />
+        </div>
+        <div class="color-row" style="margin-top:8px">
+          <label>Accent</label>
+          <input type="color" id="custom-ui-hi" value="#2f81f7" />
+        </div>
+      </div>
+      <div>
+        <div class="theme-section-label">Fonts</div>
+        <div class="font-row">
+          <label>Body</label>
+          <select id="font-body">
+            <optgroup label="── Serif ──">
+              <option value="'Libre Baskerville', serif">Libre Baskerville</option>
+              <option value="'Lora', serif">Lora</option>
+              <option value="'Merriweather', serif">Merriweather</option>
+              <option value="'EB Garamond', serif">EB Garamond</option>
+              <option value="'Crimson Text', serif">Crimson Text</option>
+              <option value="'Cormorant Garamond', serif">Cormorant Garamond</option>
+              <option value="'PT Serif', serif">PT Serif</option>
+              <option value="'Spectral', serif">Spectral</option>
+              <option value="'Bitter', serif">Bitter</option>
+              <option value="'Vollkorn', serif">Vollkorn</option>
+              <option value="Georgia, serif">Georgia</option>
+            </optgroup>
+            <optgroup label="── Sans-Serif ──">
+              <option value="'Inter', sans-serif">Inter</option>
+              <option value="'Roboto', sans-serif">Roboto</option>
+              <option value="'Open Sans', sans-serif">Open Sans</option>
+              <option value="'Montserrat', sans-serif" selected>Montserrat</option>
+              <option value="'Raleway', sans-serif">Raleway</option>
+              <option value="'Nunito', sans-serif">Nunito</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="font-row">
+          <label>Headings</label>
+          <select id="font-heading">
+            <option value="same">— same as body —</option>
+            <optgroup label="── Serif ──">
+              <option value="'Cormorant Garamond', serif">Cormorant Garamond</option>
+              <option value="'Playfair Display', serif">Playfair Display</option>
+              <option value="'DM Serif Display', serif">DM Serif Display</option>
+              <option value="'EB Garamond', serif">EB Garamond</option>
+              <option value="'Merriweather', serif">Merriweather</option>
+              <option value="'Lora', serif">Lora</option>
+              <option value="'Spectral', serif">Spectral</option>
+            </optgroup>
+            <optgroup label="── Sans-Serif ──">
+              <option value="'Oswald', sans-serif">Oswald</option>
+              <option value="'Cinzel', sans-serif" selected>Cinzel</option>
+              <option value="'Raleway', sans-serif">Raleway</option>
+              <option value="'Montserrat', sans-serif">Montserrat</option>
+              <option value="'Inter', sans-serif">Inter</option>
+              <option value="'Nunito', sans-serif">Nunito</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="font-row">
+          <label>Links</label>
+          <select id="font-link">
+            <option value="same" selected>— same as body —</option>
+            <optgroup label="── Serif ──">
+              <option value="'Lora', serif">Lora</option>
+              <option value="'Crimson Text', serif">Crimson Text</option>
+              <option value="'Spectral', serif">Spectral</option>
+            </optgroup>
+            <optgroup label="── Sans-Serif ──">
+              <option value="'Inter', sans-serif">Inter</option>
+              <option value="'Roboto', sans-serif">Roboto</option>
+              <option value="'Open Sans', sans-serif">Open Sans</option>
+              <option value="'Montserrat', sans-serif">Montserrat</option>
+              <option value="'Raleway', sans-serif">Raleway</option>
+              <option value="'Oswald', sans-serif">Oswald</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+  <button class="tb-btn" id="save-md-btn" style="display:none" onclick="saveMdFile()">Save .md</button>
+  <button class="tb-btn" id="print-btn" style="display:none" onclick="window.print()">Print / Save PDF</button>
+  <button class="tb-btn" id="open-new-btn" style="display:none">Open New File</button>
+</div>
+
+<!-- TOC SIDEBAR -->
+<button id="toc-toggle" title="Table of Contents">☰</button>
+<div id="toc-panel">
+  <h3>Contents</h3>
+  <div id="toc-list"></div>
+</div>
+
+<!-- DROP ZONE -->
+<div id="drop-zone">
+  <div class="landing-inner">
+    <div class="landing-ornament">EPUB &nbsp;·&nbsp; MARKDOWN</div>
+    <h2 class="landing-title">Read any file,<br><em>beautifully.</em></h2>
+    <p class="landing-sub">Open EPUB books or Markdown documents</p>
+
+    <div id="drop-area">
+      <div class="drop-icon">📂</div>
+      <p class="drop-title">Drop your file here</p>
+      <p class="drop-hint">Supports <strong style="color:var(--ui-text);font-weight:600">.epub</strong> and <strong style="color:var(--ui-text);font-weight:600">.md / .markdown</strong> files only</p>
+      <div class="drop-divider"><span>or</span></div>
+      <button id="choose-btn">Choose a file</button>
+      <input type="file" id="file-input" accept=".epub,.md,.markdown" />
+    </div>
+
+    <div class="landing-features">
+      <div class="feature">
+        <div class="feature-icon">📖</div>
+        <div class="feature-label">EPUB Books</div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">📝</div>
+        <div class="feature-label">Markdown Docs</div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🎨</div>
+        <div class="feature-label">Themes &amp; Fonts</div>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🔒</div>
+        <div class="feature-label">100% Local</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LOADING -->
+<div id="loading">
+  <div class="spinner"></div>
+  <span>Parsing your book…</span>
+</div>
+
+<!-- READER -->
+<div id="reader"></div>
+
+<!-- MARKDOWN READER -->
+<div id="md-reader">
+  <div class="md-layout">
+    <div class="md-editor-panel">
+      <div class="md-panel-header">
+        <span>Source</span>
+        <span class="md-filename" id="md-filename"></span>
+      </div>
+      <textarea id="md-editor" spellcheck="false" placeholder="Paste or type Markdown here…"></textarea>
+    </div>
+    <div class="md-resizer" id="md-resizer"></div>
+    <div class="md-preview-panel">
+      <div class="md-panel-header">Preview</div>
+      <div id="md-preview">
+        <div class="md-empty">
+          <span style="font-size:2rem;opacity:0.3">📄</span>
+          <span>Rendered output will appear here</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ERROR TOAST -->
+<div id="error-toast">
+  <span class="toast-icon">⚠️</span>
+  <span id="error-msg"></span>
+</div>
+
+<script>
+// ── State ──
+let chapters = [];
+let currentChapter = 0;
+let layoutMode = 'single'; // 'single' | 'double'
+
+// ── Elements ──
+const dropZone = document.getElementById('drop-zone');
+const dropArea = document.getElementById('drop-area');
+const fileInput = document.getElementById('file-input');
+const chooseBtn = document.getElementById('choose-btn');
+const loading = document.getElementById('loading');
+const reader = document.getElementById('reader');
+const mdReader = document.getElementById('md-reader');
+const mdEditor = document.getElementById('md-editor');
+const mdPreview = document.getElementById('md-preview');
+const mdFilename = document.getElementById('md-filename');
+const errorToast = document.getElementById('error-toast');
+const errorMsg = document.getElementById('error-msg');
+const tocToggle = document.getElementById('toc-toggle');
+const tocPanel = document.getElementById('toc-panel');
+const tocList = document.getElementById('toc-list');
+const prevBtn = document.getElementById('prev-btn');
+const nextBtn = document.getElementById('next-btn');
+const pageInput = document.getElementById('page-input');
+const pageTotal = document.getElementById('page-total');
+
+// Jump to page on Enter, blur on Escape, clamp on blur
+pageInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const val = parseInt(pageInput.value);
+    if (!isNaN(val)) goTo(Math.min(Math.max(val, 1), chapters.length) - 1);
+    pageInput.blur();
+  }
+  if (e.key === 'Escape') pageInput.blur();
+  // prevent arrow key navigation while typing
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
+      e.key === 'ArrowUp'   || e.key === 'ArrowDown') e.stopPropagation();
+});
+pageInput.addEventListener('blur', () => {
+  // Reset to current chapter if user typed something invalid
+  pageInput.value = currentChapter + 1;
+});
+const navArea = document.getElementById('nav-area');
+const printBtn = document.getElementById('print-btn');
+const openNewBtn = document.getElementById('open-new-btn');
+const layoutToggle = document.getElementById('layout-toggle');
+const fontSizeControl = document.getElementById('font-size-control');
+const fsDown = document.getElementById('fs-down');
+const fsUp = document.getElementById('fs-up');
+const fsLabel = document.getElementById('fs-label');
+
+const fontSizes = [
+  { size: '0.72rem', label: 'XS' },
+  { size: '0.80rem', label: 'S' },
+  { size: '0.88rem', label: 'M' },
+  { size: '0.98rem', label: 'L' },
+  { size: '1.10rem', label: 'XL' },
+];
+let fontSizeIndex = 2; // default M = 0.88rem
+
+function applyFontSize() {
+  document.querySelectorAll('.page-content').forEach(el => {
+    el.style.fontSize = fontSizes[fontSizeIndex].size;
+  });
+  fsLabel.textContent = fontSizes[fontSizeIndex].label;
+  fsDown.disabled = fontSizeIndex === 0;
+  fsUp.disabled = fontSizeIndex === fontSizes.length - 1;
+}
+
+fsDown.addEventListener('click', () => { if (fontSizeIndex > 0) { fontSizeIndex--; applyFontSize(); } });
+fsUp.addEventListener('click', () => { if (fontSizeIndex < fontSizes.length - 1) { fontSizeIndex++; applyFontSize(); } });
+
+// ── Theme ──
+const themeWrap  = document.getElementById('theme-wrap');
+const themeBtn   = document.getElementById('theme-btn');
+const themePanel = document.getElementById('theme-panel');
+const themeSwatch = document.getElementById('theme-swatch');
+const customBg   = document.getElementById('custom-bg');
+const customFg   = document.getElementById('custom-fg');
+const customHd   = document.getElementById('custom-hd');
+const customLk   = document.getElementById('custom-lk');
+const customUiBg     = document.getElementById('custom-ui-bg');
+const customUiBar    = document.getElementById('custom-ui-bar');
+const customUiBorder = document.getElementById('custom-ui-border');
+const customUiText   = document.getElementById('custom-ui-text');
+const customUiHi     = document.getElementById('custom-ui-hi');
+const fontBody   = document.getElementById('font-body');
+const fontHeading= document.getElementById('font-heading');
+const fontLink   = document.getElementById('font-link');
+
+let currentBg = '#f5f0e8';
+let currentFg = '#1a1610';
+let currentHd = '#2c1810';
+let currentLk = '#1a6fa8';
+let currentUiBg     = '#0d1117';
+let currentUiBar    = '#161b22';
+let currentUiBorder = '#30363d';
+let currentUiText   = '#e6edf3';
+let currentUiHi     = '#2f81f7';
+let currentFontBody    = "'Montserrat', sans-serif";
+let currentFontHeading = "'Cinzel', sans-serif";
+let currentFontLink    = 'same';
+
+function applyUIColours(uiBg, uiBar, uiBorder, uiText, uiHi) {
+  currentUiBg = uiBg; currentUiBar = uiBar;
+  currentUiBorder = uiBorder; currentUiText = uiText; currentUiHi = uiHi;
+  const r = document.documentElement;
+  r.style.setProperty('--ui-bg',     uiBg);
+  r.style.setProperty('--ui-bar',    uiBar);
+  r.style.setProperty('--ui-border', uiBorder);
+  r.style.setProperty('--ui-text',   uiText);
+  r.style.setProperty('--ui-muted',  blendColor(uiText, uiBg, 0.55));
+  r.style.setProperty('--ui-hi',     uiHi);
+  customUiBg.value = uiBg; customUiBar.value = uiBar;
+  customUiBorder.value = uiBorder; customUiText.value = uiText; customUiHi.value = uiHi;
+}
+
+// Blend two hex colours: frac=0 → full c1, frac=1 → full c2
+function blendColor(c1, c2, frac) {
+  const p = (h) => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+  const [r1,g1,b1] = p(c1); const [r2,g2,b2] = p(c2);
+  const r = Math.round(r1*(1-frac)+r2*frac);
+  const g = Math.round(g1*(1-frac)+g2*frac);
+  const b = Math.round(b1*(1-frac)+b2*frac);
+  return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+
+// Determine if a hex colour is "dark" (luminance < 0.35)
+function isDark(hex) {
+  const r = parseInt(hex.slice(1,3),16)/255;
+  const g = parseInt(hex.slice(3,5),16)/255;
+  const b = parseInt(hex.slice(5,7),16)/255;
+  const lum = 0.2126*r + 0.7152*g + 0.0722*b;
+  return lum < 0.35;
+}
+
+function applyTheme(bg, fg, hd, lk) {
+  currentBg = bg; currentFg = fg; currentHd = hd; currentLk = lk;
+  document.querySelectorAll('.page').forEach(p => {
+    p.style.background = bg;
+    p.style.backgroundImage = `linear-gradient(to right, rgba(0,0,0,0.04) 0px, transparent 50px), linear-gradient(to bottom, rgba(0,0,0,0.015) 0%, transparent 5%)`;
+  });
+  document.querySelectorAll('.page-content').forEach(el => el.style.color = fg);
+  document.querySelectorAll('.page-number-strip span').forEach(el => el.style.color = fg);
+  themeSwatch.style.background = bg;
+  themeSwatch.style.borderColor = isDark(bg) ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)';
+  customBg.value = bg; customFg.value = fg; customHd.value = hd; customLk.value = lk;
+  applyStyles();
+}
+
+function applyFonts() {
+  currentFontBody    = fontBody.value;
+  currentFontHeading = fontHeading.value;
+  currentFontLink    = fontLink.value;
+  // Re-strip inline font-family from any currently rendered pages
+  document.querySelectorAll('.page-content').forEach(stripInlineStyles);
+  applyStyles();
+}
+
+function applyStyles() {
+  const bodyFont    = currentFontBody;
+  const headFont    = currentFontHeading === 'same' ? currentFontBody : currentFontHeading;
+  const linkFont    = currentFontLink    === 'same' ? currentFontBody : currentFontLink;
+  const dark        = isDark(currentBg);
+
+  // Bold contrast: on dark backgrounds boost bold with brighter colour + heavier weight
+  const boldColor   = dark
+    ? lighten(currentFg, 0.18)   // slightly brighter than body text
+    : darken(currentFg, 0.15);   // slightly darker than body text
+  const boldWeight  = dark ? '800' : '700';
+
+  let styleTag = document.getElementById('theme-override-style');
+  if (!styleTag) {
+    styleTag = document.createElement('style');
+    styleTag.id = 'theme-override-style';
+    document.head.appendChild(styleTag);
+  }
+  styleTag.textContent = `
+    .page-content, .page-content * {
+      font-family: ${bodyFont} !important;
+    }
+    .page-content {
+      color: ${currentFg} !important;
+    }
+    .page-content p, .page-content li, .page-content td, .page-content th,
+    .page-content span, .page-content div, .page-content blockquote,
+    .page-content caption, .page-content figcaption, .page-content pre,
+    .page-content code, .page-content section, .page-content article,
+    .page-content em, .page-content i, .page-content small, .page-content sup,
+    .page-content sub, .page-content cite, .page-content label {
+      color: inherit !important;
+    }
+    .page-content h1, .page-content h2, .page-content h3,
+    .page-content h4, .page-content h5, .page-content h6 {
+      color: ${currentHd} !important;
+      font-family: ${headFont} !important;
+    }
+    .page-content h1 *, .page-content h2 *, .page-content h3 *,
+    .page-content h4 *, .page-content h5 *, .page-content h6 * {
+      font-family: ${headFont} !important;
+    }
+    .page-content a, .page-content a:visited {
+      color: ${currentLk} !important;
+      border-bottom-color: ${currentLk}55 !important;
+      font-family: ${linkFont} !important;
+    }
+    .page-content a *, .page-content a:visited * {
+      font-family: ${linkFont} !important;
+    }
+    .page-content a:hover { opacity: 0.75; }
+    .page-content strong, .page-content b {
+      font-weight: ${boldWeight} !important;
+      color: ${boldColor} !important;
+    }
+    .page-content td, .page-content th { color: ${currentFg} !important; }
+    .page-content thead tr, .page-content th { border-bottom-color: ${currentFg}44 !important; }
+    .page-content table:not([border]) th,
+    .page-content table:not([border]) td { border-color: ${currentFg}22 !important; }
+    .page-content tbody tr:nth-child(even) { background: ${currentFg}08 !important; }
+  `;
+}
+
+// Helpers to lighten/darken a hex colour by a fraction
+function lighten(hex, amt) { return shiftColor(hex, amt); }
+function darken(hex, amt)  { return shiftColor(hex, -amt); }
+function shiftColor(hex, amt) {
+  let r = parseInt(hex.slice(1,3),16);
+  let g = parseInt(hex.slice(3,5),16);
+  let b = parseInt(hex.slice(5,7),16);
+  r = Math.min(255, Math.max(0, Math.round(r + 255*amt)));
+  g = Math.min(255, Math.max(0, Math.round(g + 255*amt)));
+  b = Math.min(255, Math.max(0, Math.round(b + 255*amt)));
+  return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+}
+
+// Preset clicks
+document.querySelectorAll('.theme-preset').forEach(preset => {
+  preset.addEventListener('click', () => {
+    document.querySelectorAll('.theme-preset').forEach(p => p.classList.remove('active'));
+    preset.classList.add('active');
+    applyTheme(preset.dataset.bg, preset.dataset.fg, preset.dataset.hd, preset.dataset.lk);
+    if (preset.dataset.uiBg) {
+      applyUIColours(preset.dataset.uiBg, preset.dataset.uiBar, preset.dataset.uiBorder, preset.dataset.uiText, preset.dataset.uiHi);
+    }
+  });
+});
+
+// Book page colour pickers
+customBg.addEventListener('input', () => { document.querySelectorAll('.theme-preset').forEach(p => p.classList.remove('active')); applyTheme(customBg.value, currentFg, currentHd, currentLk); });
+customFg.addEventListener('input', () => { document.querySelectorAll('.theme-preset').forEach(p => p.classList.remove('active')); applyTheme(currentBg, customFg.value, currentHd, currentLk); });
+customHd.addEventListener('input', () => { document.querySelectorAll('.theme-preset').forEach(p => p.classList.remove('active')); applyTheme(currentBg, currentFg, customHd.value, currentLk); });
+customLk.addEventListener('input', () => { document.querySelectorAll('.theme-preset').forEach(p => p.classList.remove('active')); applyTheme(currentBg, currentFg, currentHd, customLk.value); });
+
+// UI chrome colour pickers
+customUiBg.addEventListener('input',     () => { document.querySelectorAll('.theme-preset').forEach(p => p.classList.remove('active')); applyUIColours(customUiBg.value, currentUiBar, currentUiBorder, currentUiText, currentUiHi); });
+customUiBar.addEventListener('input',    () => { document.querySelectorAll('.theme-preset').forEach(p => p.classList.remove('active')); applyUIColours(currentUiBg, customUiBar.value, currentUiBorder, currentUiText, currentUiHi); });
+customUiBorder.addEventListener('input', () => { document.querySelectorAll('.theme-preset').forEach(p => p.classList.remove('active')); applyUIColours(currentUiBg, currentUiBar, customUiBorder.value, currentUiText, currentUiHi); });
+customUiText.addEventListener('input',   () => { document.querySelectorAll('.theme-preset').forEach(p => p.classList.remove('active')); applyUIColours(currentUiBg, currentUiBar, currentUiBorder, customUiText.value, currentUiHi); });
+customUiHi.addEventListener('input',     () => { document.querySelectorAll('.theme-preset').forEach(p => p.classList.remove('active')); applyUIColours(currentUiBg, currentUiBar, currentUiBorder, currentUiText, customUiHi.value); });
+
+// Font selectors
+fontBody.addEventListener('change', applyFonts);
+fontHeading.addEventListener('change', applyFonts);
+fontLink.addEventListener('change', applyFonts);
+
+// Toggle panel
+themeBtn.addEventListener('click', e => { e.stopPropagation(); themePanel.classList.toggle('open'); });
+document.addEventListener('click', e => { if (!themeWrap.contains(e.target)) themePanel.classList.remove('open'); });
+
+
+// ── File routing ──
+function showError(msg) {
+  errorMsg.textContent = msg;
+  errorToast.classList.add('show');
+  clearTimeout(showError._t);
+  showError._t = setTimeout(() => errorToast.classList.remove('show'), 4500);
+}
+
+function dispatchFile(file) {
+  if (!file) return;
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.epub')) {
+    loadEpub(file);
+  } else if (name.endsWith('.md') || name.endsWith('.markdown')) {
+    loadMarkdown(file);
+  } else {
+    showError(`"${file.name}" is not supported. Please drop an .epub or .md/.markdown file.`);
+  }
+}
+
+chooseBtn.addEventListener('click', () => fileInput.click());
+dropArea.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => dispatchFile(e.target.files[0]));
+
+// Drag & drop
+['dragenter','dragover'].forEach(ev => dropArea.addEventListener(ev, e => { e.preventDefault(); dropArea.classList.add('drag-over'); }));
+['dragleave','drop'].forEach(ev => dropArea.addEventListener(ev, e => { e.preventDefault(); dropArea.classList.remove('drag-over'); }));
+dropArea.addEventListener('drop', e => dispatchFile(e.dataTransfer.files[0]));
+
+// Also allow dropping anywhere on the page
+['dragenter','dragover'].forEach(ev => document.addEventListener(ev, e => e.preventDefault()));
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f) dispatchFile(f);
+});
+
+// ── Open new ──
+openNewBtn.addEventListener('click', () => { location.reload(); });
+
+// ── TOC toggle ──
+tocToggle.addEventListener('click', () => tocPanel.classList.toggle('open'));
+document.addEventListener('click', e => { if (!tocPanel.contains(e.target) && e.target !== tocToggle) tocPanel.classList.remove('open'); });
+
+// ── Nav ──
+prevBtn.addEventListener('click', () => goTo(currentChapter - (layoutMode === 'double' ? 2 : 1)));
+nextBtn.addEventListener('click', () => goTo(currentChapter + (layoutMode === 'double' ? 2 : 1)));
+document.addEventListener('keydown', e => {
+  const step = layoutMode === 'double' ? 2 : 1;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') goTo(currentChapter + step);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   goTo(currentChapter - step);
+});
+
+// ─────────────────────────────────────────────
+async function loadEpub(file) {
+  dropZone.style.display = 'none';
+  loading.style.display = 'flex';
+
+  try {
+    const zip = await JSZip.loadAsync(file);
+
+    // 1. Parse container.xml → rootfile path
+    const containerXml = await zip.file('META-INF/container.xml').async('string');
+    const rootfilePath = containerXml.match(/full-path="([^"]+)"/)[1];
+    const rootDir = rootfilePath.includes('/') ? rootfilePath.substring(0, rootfilePath.lastIndexOf('/') + 1) : '';
+
+    // 2. Parse OPF
+    const opfText = await zip.file(rootfilePath).async('string');
+    const parser = new DOMParser();
+    const opf = parser.parseFromString(opfText, 'application/xml');
+
+    // 3. Build manifest map (id → href)
+    const manifest = {};
+    opf.querySelectorAll('manifest item').forEach(item => {
+      manifest[item.getAttribute('id')] = {
+        href: item.getAttribute('href'),
+        type: item.getAttribute('media-type')
+      };
+    });
+
+    // 4. Spine order — deduplicate by filename (same href → skip)
+    const spineIds = [...opf.querySelectorAll('spine itemref')].map(i => i.getAttribute('idref'));
+    const spineHrefsRaw = spineIds.map(id => manifest[id]?.href).filter(Boolean);
+    const seenHrefs = new Set();
+    const spineHrefs = spineHrefsRaw.filter(href => {
+      const base = href.split('#')[0];
+      if (seenHrefs.has(base)) return false;
+      seenHrefs.add(base);
+      return true;
+    });
+
+    // 5. Get title / metadata
+    const title = opf.querySelector('title')?.textContent || file.name.replace('.epub','');
+
+    // 6. Load NCX or nav for TOC
+    let tocData = [];
+    const ncxId = opf.querySelector('spine')?.getAttribute('toc');
+    const ncxHref = ncxId ? manifest[ncxId]?.href : null;
+    const navItem = [...opf.querySelectorAll('manifest item')].find(i => i.getAttribute('properties') === 'nav');
+    const navHref = navItem ? navItem.getAttribute('href') : null;
+
+    if (navHref) {
+      try {
+        const navText = await zip.file(rootDir + navHref).async('string');
+        const navDoc = parser.parseFromString(navText, 'text/html');
+        navDoc.querySelectorAll('nav[epub\\:type="toc"] a, nav a').forEach(a => {
+          const href = (a.getAttribute('href') || '').split('#')[0];
+          tocData.push({ label: a.textContent.trim(), href, depth: 0 });
+        });
+      } catch(e) {}
+    } else if (ncxHref) {
+      try {
+        const ncxText = await zip.file(rootDir + ncxHref).async('string');
+        const ncx = parser.parseFromString(ncxText, 'application/xml');
+        ncx.querySelectorAll('navPoint').forEach(np => {
+          const label = np.querySelector('text')?.textContent?.trim() || '';
+          const src   = (np.querySelector('content')?.getAttribute('src') || '').split('#')[0];
+          tocData.push({ label, href: src, depth: 0 });
+        });
+      } catch(e) {}
+    }
+
+    // 7. Load all spine items as HTML
+    chapters = [];
+    const imageCache = {};
+
+    // Pre-cache all images as data URLs
+    for (const [path, zipFile] of Object.entries(zip.files)) {
+      const lower = path.toLowerCase();
+      if (/\.(png|jpe?g|gif|svg|webp)$/.test(lower)) {
+        try {
+          const ext = lower.split('.').pop();
+          const mime = ext === 'svg' ? 'image/svg+xml' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+          const data = await zipFile.async('base64');
+          imageCache[path] = `data:${mime};base64,${data}`;
+          // also store by filename
+          const fname = path.split('/').pop();
+          imageCache[fname] = imageCache[path];
+        } catch(e) {}
+      }
+    }
+
+    for (const href of spineHrefs) {
+      try {
+        const fullPath = rootDir + href;
+        const text = await zip.file(fullPath).async('string');
+        const doc = parser.parseFromString(text, 'text/html');
+
+        // Fix images
+        doc.querySelectorAll('img, image').forEach(img => {
+          const srcAttr = img.tagName === 'image' ? 'href' : 'src';
+          let src = img.getAttribute(srcAttr) || img.getAttribute('xlink:href') || '';
+          if (!src.startsWith('data:')) {
+            // resolve relative to chapter path
+            const dir = fullPath.includes('/') ? fullPath.substring(0, fullPath.lastIndexOf('/') + 1) : '';
+            const resolved = (dir + src).replace(/[^/]+\/\.\.\//g, '');
+            const cached = imageCache[resolved] || imageCache[src] || imageCache[src.split('/').pop()];
+            if (cached) img.setAttribute(srcAttr, cached);
+          }
+        });
+
+        // Remove scripts/style links that won't work
+        doc.querySelectorAll('script, link[rel="stylesheet"]').forEach(el => el.remove());
+
+        const body = doc.body ? doc.body.innerHTML : doc.documentElement.innerHTML;
+        const chapterTitle = doc.querySelector('title')?.textContent?.trim() ||
+                             doc.querySelector('h1,h2,h3')?.textContent?.trim() || `Chapter ${chapters.length + 1}`;
+        chapters.push({ html: body, title: chapterTitle, href });
+      } catch(e) {
+        console.warn('Could not load', href, e);
+      }
+    }
+
+    if (chapters.length === 0) throw new Error('No readable chapters found in this EPUB.');
+
+    // Deduplicate chapters by content — some EPUBs have different filenames
+    // pointing to identical or near-identical body content (e.g. two "Brief Contents" files).
+    // We use the first ~400 chars of normalised text as a fingerprint.
+    function contentKey(html) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      return (tmp.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+    }
+    const seenContent = new Set();
+    chapters = chapters.filter(ch => {
+      const key = contentKey(ch.html);
+      if (key.length > 20 && seenContent.has(key)) return false;
+      seenContent.add(key);
+      return true;
+    });
+
+    // 8. Build TOC sidebar
+    tocList.innerHTML = '';
+    if (tocData.length === 0) {
+      chapters.forEach((ch, i) => {
+        tocData.push({ label: ch.title, href: ch.href, index: i });
+      });
+    }
+    tocData.forEach(item => {
+      const idx = chapters.findIndex(c => c.href && item.href && (c.href.endsWith(item.href) || item.href.endsWith(c.href)));
+      const el = document.createElement('span');
+      el.className = 'toc-item';
+      el.textContent = item.label;
+      el.dataset.index = idx >= 0 ? idx : 0;
+      if (item.depth) el.dataset.depth = item.depth;
+      el.addEventListener('click', () => { goTo(parseInt(el.dataset.index)); tocPanel.classList.remove('open'); });
+      tocList.appendChild(el);
+    });
+
+    // 9. Show reader
+    loading.style.display = 'none';
+    reader.style.display = 'flex';
+    tocToggle.style.display = 'flex';
+    navArea.style.display = 'flex';
+    printBtn.style.display = '';
+    openNewBtn.style.display = '';
+    layoutToggle.style.display = 'flex';
+    fontSizeControl.style.display = 'flex';
+    themeWrap.style.display = 'block';
+    document.title = title + ' — Open Source File Reader';
+
+    goTo(0);
+
+  } catch (err) {
+    loading.style.display = 'none';
+    reader.style.display = 'flex';
+    reader.innerHTML = `<div style="color:var(--ui-muted);font-family:'Inter',sans-serif;font-size:0.88rem;text-align:center;padding:60px 40px">
+      <p style="color:#ff8080;font-size:1rem;font-weight:600;margin-bottom:10px">⚠ Could not parse this EPUB</p>
+      <p>${err.message}</p>
+      <p style="margin-top:16px;font-size:0.8rem;opacity:0.6">Try another file or check that it is DRM-free.</p>
+    </div>`;
+  }
+}
+
+function setLayout(mode) {
+  layoutMode = mode;
+  document.getElementById('btn-single').classList.toggle('active', mode === 'single');
+  document.getElementById('btn-double').classList.toggle('active', mode === 'double');
+  // In double mode, snap to even index so spreads are always left/right pairs
+  if (mode === 'double' && currentChapter % 2 !== 0) currentChapter = Math.max(0, currentChapter - 1);
+  goTo(currentChapter);
+}
+
+// Strip inline font-family and color from all descendants so our
+// theme/font CSS overrides always win over the EPUB's own inline styles.
+// We preserve other inline style properties (margins, padding, etc.)
+function stripInlineStyles(root) {
+  root.querySelectorAll('*').forEach(el => {
+    if (!el.style) return;
+    el.style.removeProperty('font-family');
+    el.style.removeProperty('font-face');
+    // Only remove color from non-heading, non-link elements so
+    // intentional inline colours (e.g. highlighted spans) are cleared
+    // but we let our theme override handle the actual colours.
+    el.style.removeProperty('color');
+  });
+}
+
+function buildPage(index, side) {
+  const page = document.createElement('div');
+  page.className = 'page' + (side ? ` ${side}-page` : '');
+
+  if (index === null) {
+    // Blank filler page
+    page.classList.add('blank-page');
+    const strip = document.createElement('div');
+    strip.className = 'page-number-strip';
+    page.appendChild(strip);
+    return { page, content: null };
+  }
+
+  page.style.background = 'var(--paper)';
+  page.style.backgroundImage = 'linear-gradient(to right, rgba(0,0,0,0.04) 0px, transparent 50px), linear-gradient(to bottom, rgba(0,0,0,0.015) 0%, transparent 5%)';
+
+  const content = document.createElement('div');
+  content.className = 'page-content';
+  content.innerHTML = chapters[index].html;
+
+  // Strip inline font-family and color so our theme/font overrides take full effect
+  stripInlineStyles(content);
+
+  const strip = document.createElement('div');
+  strip.className = 'page-number-strip';
+  strip.innerHTML = `<span>${index + 1}</span>`;
+
+  page.appendChild(content);
+  page.appendChild(strip);
+  return { page, content };
+}
+
+function attachLinkHandlers(content, chapterIndex) {
+  if (!content) return;
+  content.querySelectorAll('a[href]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const href = a.getAttribute('href');
+      if (!href) return;
+      if (href.startsWith('http://') || href.startsWith('https://')) {
+        window.open(href, '_blank', 'noopener');
+        return;
+      }
+      const [filePart, fragment] = href.split('#');
+      if (!filePart) {
+        const target = document.getElementById(fragment);
+        if (target) target.scrollIntoView({ behavior: 'smooth' });
+        return;
+      }
+      const targetIndex = chapters.findIndex(c =>
+        c.href && (c.href.endsWith(filePart) || filePart.endsWith(c.href) || c.href === filePart)
+      );
+      if (targetIndex >= 0) {
+        goTo(targetIndex);
+        if (fragment) {
+          setTimeout(() => {
+            const target = document.getElementById(fragment);
+            if (target) target.scrollIntoView({ behavior: 'smooth' });
+          }, 100);
+        }
+      }
+    });
+  });
+}
+
+function goTo(index) {
+  if (index < 0 || index >= chapters.length) return;
+  // In double mode always land on even index
+  if (layoutMode === 'double' && index % 2 !== 0) index = Math.max(0, index - 1);
+  currentChapter = index;
+
+  // Update TOC highlights
+  document.querySelectorAll('.toc-item').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.index) === index ||
+      (layoutMode === 'double' && parseInt(el.dataset.index) === index + 1));
+  });
+
+  reader.innerHTML = '';
+
+  if (layoutMode === 'single') {
+    // ── Single page ──
+    const wrapper = document.createElement('div');
+    wrapper.className = 'page-wrapper';
+
+    const shadow = document.createElement('div');
+    shadow.className = 'page-shadow';
+
+    const { page, content } = buildPage(index, null);
+    wrapper.appendChild(shadow);
+    wrapper.appendChild(page);
+    reader.appendChild(wrapper);
+    attachLinkHandlers(content, index);
+
+  } else {
+    // ── Two-page spread ──
+    const wrapper = document.createElement('div');
+    wrapper.className = 'spread-wrapper';
+
+    const leftIndex = index;
+    const rightIndex = index + 1 < chapters.length ? index + 1 : null;
+
+    const { page: leftPage, content: leftContent } = buildPage(leftIndex, 'left');
+    const { page: rightPage, content: rightContent } = buildPage(rightIndex, 'right');
+
+    wrapper.appendChild(leftPage);
+    wrapper.appendChild(rightPage);
+    reader.appendChild(wrapper);
+    attachLinkHandlers(leftContent, leftIndex);
+    attachLinkHandlers(rightContent, rightIndex);
+  }
+
+  // Nav state — double mode steps by 2
+  const step = layoutMode === 'double' ? 2 : 1;
+  prevBtn.disabled = currentChapter === 0;
+  nextBtn.disabled = layoutMode === 'double'
+    ? currentChapter + 2 >= chapters.length
+    : currentChapter >= chapters.length - 1;
+
+  pageInput.value = currentChapter + 1;
+  pageInput.max = chapters.length;
+  pageTotal.textContent = `/ ${chapters.length}`;
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  applyFontSize();
+  applyTheme(currentBg, currentFg, currentHd, currentLk);
+}
+
+// ── Markdown panel resizer ──
+(function() {
+  const resizer = document.getElementById('md-resizer');
+  const layout  = resizer ? resizer.parentElement : null;
+  const editorPanel = document.querySelector('.md-editor-panel');
+  let startX, startW;
+
+  function onMouseMove(e) {
+    if (!editorPanel || !layout) return;
+    const layoutLeft = layout.getBoundingClientRect().left;
+    const layoutW    = layout.getBoundingClientRect().width;
+    const newW = Math.max(120, Math.min(e.clientX - layoutLeft, layoutW - 125));
+    editorPanel.style.width = newW + 'px';
+    // prevent text selection flicker during drag
+    e.preventDefault();
+  }
+
+  function onMouseUp() {
+    if (resizer) resizer.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+
+  if (resizer) {
+    resizer.addEventListener('mousedown', e => {
+      e.preventDefault();
+      resizer.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
+
+    // Touch support
+    resizer.addEventListener('touchstart', e => {
+      const touch = e.touches[0];
+      resizer.classList.add('dragging');
+      function onTouchMove(ev) {
+        const t = ev.touches[0];
+        const fakeEvent = { clientX: t.clientX, preventDefault: () => {} };
+        onMouseMove(fakeEvent);
+      }
+      function onTouchEnd() {
+        resizer.classList.remove('dragging');
+        resizer.removeEventListener('touchmove', onTouchMove);
+        resizer.removeEventListener('touchend', onTouchEnd);
+      }
+      resizer.addEventListener('touchmove', onTouchMove, { passive: false });
+      resizer.addEventListener('touchend', onTouchEnd);
+    }, { passive: true });
+  }
+})();
+
+// ── Markdown rendering ──
+marked.setOptions({ breaks: true, gfm: true });
+
+function renderMarkdown() {
+  const src = mdEditor.value.trim();
+  if (src) {
+    mdPreview.innerHTML = `<div class="md-content">${marked.parse(src)}</div>`;
+  } else {
+    mdPreview.innerHTML = `<div class="md-empty"><span style="font-size:2rem;opacity:0.3">📄</span><span>Rendered output will appear here</span></div>`;
+  }
+}
+
+mdEditor.addEventListener('input', renderMarkdown);
+
+function loadMarkdown(file) {
+  const fr = new FileReader();
+  fr.onload = e => {
+    // Show reader chrome
+    dropZone.style.display = 'none';
+    loading.style.display = 'none';
+    reader.style.display = 'none';
+    mdReader.style.display = 'flex';
+    openNewBtn.style.display = '';
+    themeWrap.style.display = 'block';
+    fontSizeControl.style.display = 'none'; // font size n/a for md
+    navArea.style.display = 'none';
+    layoutToggle.style.display = 'none';
+    printBtn.style.display = '';
+    document.getElementById('save-md-btn').style.display = '';
+
+    // Set default 50/50 split
+    const editorPanel = document.querySelector('.md-editor-panel');
+    if (editorPanel) editorPanel.style.width = '50%';
+
+    mdFilename.textContent = file.name;
+    mdEditor.value = e.target.result;
+    renderMarkdown();
+    document.title = file.name + ' — Open Source File Reader';
+  };
+  fr.readAsText(file);
+}
+function saveMdFile() {
+  const text = mdEditor.value;
+  const filename = (mdFilename.textContent || 'document') .replace(/\.md$/i, '') + '.md';
+  const blob = new Blob([text], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+</script>
+</body>
+</html>
